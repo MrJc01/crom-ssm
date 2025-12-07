@@ -12,7 +12,7 @@ const commonConfig = {
   target: 'electron-renderer',
   module: {
     rules: [
-      { test: /\.css$/, use: ['style-loader', 'css-loader'] },
+      { test: /\.css$/, use: ['style-loader', 'css-loader', 'postcss-loader'] },
       { test: /\.ttf$/, type: 'asset/resource' }
     ],
   },

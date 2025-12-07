@@ -1,173 +1,302 @@
+import './index.css';
 import Swal from 'sweetalert2';
-import * as monaco from 'monaco-editor';
-import { Chart, registerables } from 'chart.js';
-import { Terminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
-import 'xterm/css/xterm.css';
-import './styles.css';
+import { Sidebar } from './components/Sidebar';
+import { Dashboard } from './components/Dashboard';
+import { TerminalManager } from './components/TerminalManager';
+import { FileManager } from './components/FileManager';
+import { ProcessManager } from './components/ProcessManager';
 
-Chart.register(...registerables);
+const swalTheme = { background: '#1e293b', color: '#cbd5e1', confirmButtonColor: '#2563eb', cancelButtonColor: '#ef4444' };
+
+class AppController {
+    constructor() {
+        this.activeConnectionId = null;
+        this.cleanupMetrics = null;
+
+        // Components
+        this.dashboard = new Dashboard();
+        this.terminalManager = new TerminalManager(null);
+        this.fileManager = new FileManager();
+        this.processManager = new ProcessManager();
+        
+        this.sidebar = new Sidebar({
+            onSelectConnection: (id) => this.selectConnection(id),
+            onEditConnection: (conn) => this.openConnectionModal(conn),
+            onDeleteConnection: (conn) => this.deleteConnection(conn),
+            onSelectSnippet: (snippet) => this.executeSnippet(snippet),
+            onEditSnippet: (snippet) => this.openSnippetModal(snippet),
+            onDeleteSnippet: (snippet) => this.deleteSnippet(snippet)
+        });
+
+        // Global Event Listeners (Metrics)
+        window.ssm.onMetricsUpdate((metrics) => {
+            if (this.activeConnectionId) {
+                this.dashboard.update(metrics);
+            }
+        });
+
+        this.initTabs();
+        this.init();
+    }
+
+    initTabs() {
+        const tabs = document.querySelectorAll('.tab-link');
+        const contents = document.querySelectorAll('.tab-content');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Remove active class from all tabs
+                tabs.forEach(t => {
+                    t.classList.remove('active', 'border-blue-500', 'text-white');
+                    t.classList.add('border-transparent', 'text-slate-400');
+                });
+
+                // Add active class to clicked tab
+                tab.classList.add('active', 'border-blue-500', 'text-white');
+                tab.classList.remove('border-transparent', 'text-slate-400');
+
+                // Hide all contents
+                contents.forEach(c => c.classList.add('hidden'));
+
+                // Show target content
+                const targetId = tab.dataset.tab;
+                const targetContent = document.getElementById(targetId);
+                if (targetContent) {
+                    targetContent.classList.remove('hidden');
+                    
+                    // Specific component refreshes
+                    if (targetId === 'terminal') {
+                        this.terminalManager.fitActiveTerm();
+                        this.terminalManager.activeSessionId && this.terminalManager.sessions.get(this.terminalManager.activeSessionId)?.term.focus();
+                    }
+                }
+            });
+        });
+    }
+
+    async init() {
+        await this.loadConnections();
+        await this.loadSnippets();
+        this.selectConnection(null);
+    }
+
+    async loadConnections() {
+        const connections = await window.ssm.listConnections();
+        this.sidebar.renderConnections(connections, this.activeConnectionId);
+    }
+    
+    async loadSnippets() {
+        const snippets = await window.ssm.snippetsList();
+        this.sidebar.renderSnippets(snippets);
+    }
+
+    async selectConnection(id) {
+        // If clicking same connection, do nothing? Or refresh? Let's refresh/select.
+        if (this.activeConnectionId) {
+            this.sidebar.setConnectionStatus(this.activeConnectionId, 'inactive');
+            window.ssm.stopMetrics();
+            if (this.cleanupMetrics) { this.cleanupMetrics(); this.cleanupMetrics = null; }
+        }
+
+        this.activeConnectionId = id;
+        this.sidebar.renderConnections(await window.ssm.listConnections(), id); // Re-render to update active state CSS
+        
+        // Propagate to components
+        this.terminalManager.setConnectionId(id);
+        this.fileManager.setConnectionId(id);
+        this.processManager.setConnectionId(id);
+
+        if (id) {
+            this.sidebar.setConnectionStatus(id, 'loading');
+            this.dashboard.init();
+            window.ssm.startMetrics(id);
+            // Terminal reset only on explicit connection change? 
+            // The Manager handles multiple sessions. We might want to clear them or keep them.
+            // For now, let's keep sessions but maybe focus or notify?
+            // Actually, usually switching servers implies clearing old terminal sessions of previous server.
+            // But here tabs are global? No, terminals are per connection context usually.
+            // Let's destroy old sessions for simplicity as per previous logic.
+            this.terminalManager.reset(); 
+            this.terminalManager.destroyDefault(); // Start with one fresh terminal
+            
+        } else {
+            this.dashboard.reset();
+            this.terminalManager.reset();
+        }
+    }
+
+    executeSnippet(snippet) {
+         if (!this.activeConnectionId) {
+            Swal.fire({ title: 'Sem Conexão', text: 'Selecione uma conexão e abra um terminal primeiro.', icon: 'info', ...swalTheme });
+            return;
+        }
+        this.terminalManager.writeToActive(snippet.command + '\n');
+    }
+
+    // Modal Logic (kept here to avoid circular deps or complex manager extraction for now)
+    async openConnectionModal(conn = null) {
+        const isEditing = !!conn;
+        // ... (SweetAlert logic adapted from original) ...
+        // For brevity, using a simplified version or similar logic. 
+        // I will copy the original huge HTML string logic but tailored with Tailwind classes if possible, 
+        // OR just keep using swal-wide class and standard inputs, relying on index.css hacks or swalTheme.
+        
+        // Note: Tailwind classes inside SweetAlert HTML might not work if Swal renders outside app root (it does, in body).
+        // Since I have index.css generated with Tailwind and it applies to body, it should work if we use utility classes.
+
+        let validatedData = null;
+
+        await Swal.fire({
+            title: isEditing ? 'Editar Conexão' : 'Nova Conexão',
+            html: `
+                <form id="swal-form" class="flex flex-col gap-3 text-left">
+                    <div>
+                        <label class="text-sm text-slate-400">Nome</label>
+                        <input id="swal-name" name="name" class="swal2-input bg-slate-800 border-slate-600 text-white focus:border-blue-500 w-full" placeholder="Meu Servidor" value="${conn?.name || ''}">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-sm text-slate-400">Host</label>
+                            <input id="swal-host" name="host" class="swal2-input bg-slate-800 border-slate-600 text-white w-full" placeholder="192.168.1.1" value="${conn?.host || ''}">
+                        </div>
+                         <div>
+                            <label class="text-sm text-slate-400">Usuário</label>
+                            <input id="swal-user" name="user" class="swal2-input bg-slate-800 border-slate-600 text-white w-full" placeholder="root" value="${conn?.user || ''}">
+                        </div>
+                    </div>
+                    <div>
+                         <label class="text-sm text-slate-400">Autenticação</label>
+                         <select id="swal-authMethod" name="authMethod" class="swal2-select bg-slate-800 border-slate-600 text-white w-full">
+                            <option value="password" ${conn?.authMethod === 'password' ? 'selected' : ''}>Senha</option>
+                            <option value="key" ${conn?.authMethod === 'key' ? 'selected' : ''}>Chave Privada</option>
+                         </select>
+                    </div>
+                    <div id="swal-pass-group">
+                        <label class="text-sm text-slate-400">Senha</label>
+                        <input type="password" id="swal-password" name="password" class="swal2-input bg-slate-800 border-slate-600 text-white w-full" placeholder="${isEditing ? '(Deixar em branco)' : ''}">
+                    </div>
+                     <div id="swal-key-group" style="display:none">
+                        <label class="text-sm text-slate-400">Caminho da Chave</label>
+                        <input id="swal-keyPath" name="keyPath" class="swal2-input bg-slate-800 border-slate-600 text-white w-full" placeholder="/path/to/key" value="${conn?.keyPath || ''}">
+                    </div>
+                     <div>
+                        <label class="text-sm text-slate-400">Serviços (separados por vírgula)</label>
+                        <input id="swal-services" name="monitoredServices" class="swal2-input bg-slate-800 border-slate-600 text-white w-full" placeholder="nginx, docker" value="${(conn?.monitoredServices || []).join(', ')}">
+                    </div>
+                </form>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'Testar & Salvar',
+            cancelButtonText: 'Cancelar',
+            width: '600px',
+            ...swalTheme,
+            didOpen: () => {
+                const authMethod = document.getElementById('swal-authMethod');
+                const passGroup = document.getElementById('swal-pass-group');
+                const keyGroup = document.getElementById('swal-key-group');
+                const toggle = () => {
+                    if (authMethod.value === 'key') { passGroup.style.display = 'none'; keyGroup.style.display = 'block'; }
+                    else { passGroup.style.display = 'block'; keyGroup.style.display = 'none'; }
+                };
+                authMethod.addEventListener('change', toggle);
+                toggle();
+            },
+            preConfirm: async () => {
+                 const form = document.getElementById('swal-form');
+                 const formData = new FormData(form);
+                 const data = Object.fromEntries(formData.entries());
+                 
+                 if (!data.name || !data.host || !data.user) {
+                     Swal.showValidationMessage('Preencha os campos obrigatórios');
+                     return false;
+                 }
+                 data.monitoredServices = data.monitoredServices.split(',').map(s => s.trim()).filter(Boolean);
+                 if(isEditing) data.id = conn.id;
+
+                 try {
+                     await window.ssm.testConnection(data);
+                     return data;
+                 } catch (e) {
+                     Swal.showValidationMessage('Falha na conexão: ' + e.message);
+                     return false;
+                 }
+            }
+        }).then(async (result) => {
+            if (result.isConfirmed && result.value) {
+                const { password, ...data } = result.value;
+                try {
+                    if (isEditing) {
+                        await window.ssm.updateConnection(conn.id, data);
+                        if (password) await window.ssm.setPassword(conn.id, password);
+                    } else {
+                        const newConn = await window.ssm.addConnection(data);
+                        if (password) await window.ssm.setPassword(newConn.id, password);
+                    }
+                    this.loadConnections();
+                    Swal.fire({ icon: 'success', title: 'Salvo!', timer: 1500, showConfirmButton: false, ...swalTheme });
+                } catch (e) {
+                    Swal.fire({ icon: 'error', title: 'Erro', text: e.message, ...swalTheme });
+                }
+            }
+        });
+    }
+
+    deleteConnection(conn) {
+        Swal.fire({
+            title: 'Confirmar Exclusão',
+            text: conn.name,
+            icon: 'warning',
+            showCancelButton: true,
+            ...swalTheme
+        }).then(async (r) => {
+            if(r.isConfirmed) {
+                await window.ssm.removeConnection(conn.id);
+                if (this.activeConnectionId === conn.id) this.selectConnection(null);
+                this.loadConnections();
+            }
+        });
+    }
+
+    async openSnippetModal(snippet = null) {
+        const isEditing = !!snippet;
+        const { value: formValues } = await Swal.fire({
+            title: isEditing ? 'Editar Snippet' : 'Novo Snippet',
+            html: `
+                <input id="swal-snip-name" class="swal2-input bg-slate-800 text-white" placeholder="Nome" value="${snippet?.name || ''}">
+                <textarea id="swal-snip-cmd" class="swal2-textarea bg-slate-800 text-white font-mono text-sm" placeholder="Comando">${snippet?.command || ''}</textarea>
+            `,
+            showCancelButton: true,
+            preConfirm: () => {
+                return [
+                    document.getElementById('swal-snip-name').value,
+                    document.getElementById('swal-snip-cmd').value
+                ]
+            },
+            ...swalTheme
+        });
+
+        if (formValues) {
+            const [name, command] = formValues;
+            if (!name || !command) return;
+            
+            if (isEditing) await window.ssm.snippetUpdate({ ...snippet, name, command });
+            else await window.ssm.snippetAdd({ name, command });
+            
+            this.loadSnippets();
+        }
+    }
+
+    deleteSnippet(snippet) {
+         Swal.fire({ title: 'Excluir?', text: snippet.name, icon: 'warning', showCancelButton: true, ...swalTheme })
+            .then(async r => {
+                if(r.isConfirmed) {
+                    await window.ssm.snippetRemove(snippet.id);
+                    this.loadSnippets();
+                }
+            });
+    }
+}
 
 document.addEventListener('DOMContentLoaded', () => {
-    const app = document.getElementById('app');
-    app.innerHTML = `
-        <div class="sidebar">
-            <div class="sidebar-tabs">
-                <button class="sidebar-tab-link active" data-stab="connections">Conexões</button>
-                <button class="sidebar-tab-link" data-stab="snippets">Snippets</button>
-            </div>
-            <div id="connections" class="sidebar-tab-content active">
-                <ul id="connections-list" class="connections-list"></ul>
-                <button id="add-new-connection-btn" class="add-btn">+ Nova Conexão</button>
-            </div>
-            <div id="snippets" class="sidebar-tab-content">
-                <ul id="snippets-list" class="connections-list snippets-list"></ul>
-                <button id="add-new-snippet-btn" class="add-btn">+ Novo Snippet</button>
-            </div>
-        </div>
-        <div class="main-content">
-            <div id="loading-overlay" class="loading-overlay hidden"><div class="spinner"></div></div>
-            <div class="tabs">
-                <button class="tab-link active" data-tab="dashboard">Dashboard</button>
-                <button class="tab-link" data-tab="files">Arquivos</button>
-                <button class="tab-link" data-tab="terminal">Terminal</button>
-                <button class="tab-link" data-tab="processes">Processos</button>
-            </div>
-            <div id="dashboard" class="tab-content active">
-                <div id="dashboard-welcome">Selecione uma conexão para ver as métricas.</div>
-                <div id="dashboard-content" class="dashboard-grid" style="display: none;">
-                    <div class="card"><div class="card-header"><span>CPU</span><span id="cpu-text">--%</span></div><div class="card-body chart-card-body"><canvas id="cpuChart"></canvas></div></div>
-                    <div class="card"><div class="card-header"><span>Memória</span><span id="mem-text">-- / -- MB</span></div><div class="card-body chart-card-body"><canvas id="memChart"></canvas></div></div>
-                    <div class="card"><div class="card-header"><span>Disco (/)</span><span id="disk-text">-- / --</span></div><div class="card-body"><canvas id="diskChart"></canvas></div></div>
-                    <div class="card uptime-card"><div class="card-header">Uptime</div><div class="card-body" id="uptime-text">--</div></div>
-                    <div class="card"><div class="card-header">Informações do Sistema</div><div class="card-body sys-info-grid">
-                        <p><strong>SO:</strong> <span id="sys-os">--</span></p>
-                        <p><strong>Kernel:</strong> <span id="sys-kernel">--</span></p>
-                        <p><strong>Arch:</strong> <span id="sys-arch">--</span></p>
-                        <p><strong>CPU:</strong> <span id="sys-cpu">--</span></p>
-                    </div></div>
-                     <div class="card"><div class="card-header">Atividade de Rede</div><div class="card-body network-info">
-                        <p><strong>Recebidos:</strong> <span id="net-in">-- KB/s</span></p>
-                        <p><strong>Enviados:</strong> <span id="net-out">-- KB/s</span></p>
-                    </div></div>
-                    <div class="card" id="services-card"><div class="card-header">Serviços Monitorados</div><div class="card-body services-list" id="services-list-body"><p>Nenhum serviço monitorado.</p></div></div>
-                </div>
-            </div>
-            <div id="files" class="tab-content">
-                <div id="file-explorer" class="file-explorer"><div class="file-explorer-header"><h3>Explorador</h3><div id="current-path" class="current-path">/</div></div><ul id="file-list" class="file-list"></ul></div>
-                <div class="editor-pane"><div id="editor-view" class="view"><div class="editor-header"><span id="open-file-name"></span><button id="save-file-btn" class="action-btn" disabled>Salvar</button></div><div id="editor-container"></div></div><div id="media-view" class="view media-viewer" style="display: none;"></div></div>
-            </div>
-            <div id="terminal" class="tab-content">
-                <div class="terminal-layout">
-                    <ul class="terminal-tabs" id="terminal-tabs-list"></ul>
-                    <div class="terminal-panes" id="terminal-panes-container"></div>
-                </div>
-            </div>
-            <div id="processes" class="tab-content">
-                <div class="process-manager">
-                    <div class="pm-controls">
-                        <input type="text" id="process-filter" placeholder="Filtrar por nome ou PID...">
-                        <button id="refresh-processes-btn" class="action-btn">Atualizar</button>
-                    </div>
-                    <div class="pm-table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>PID</th>
-                                    <th>Usuário</th>
-                                    <th>%CPU</th>
-                                    <th>%Memória</th>
-                                    <th>Comando</th>
-                                    <th>Ação</th>
-                                </tr>
-                            </thead>
-                            <tbody id="process-list-body"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div id="context-menu" class="context-menu"></div>
-    `;
-
-    // --- Selectors ---
-    const connectionsList = document.getElementById('connections-list'), addNewConnectionBtn = document.getElementById('add-new-connection-btn'), tabs = document.querySelectorAll('.tab-link'), tabContents = document.querySelectorAll('.tab-content'), fileExplorer = document.getElementById('file-explorer'), fileList = document.getElementById('file-list'), currentPathEl = document.getElementById('current-path'), editorContainer = document.getElementById('editor-container'), saveFileBtn = document.getElementById('save-file-btn'), openFileNameEl = document.getElementById('open-file-name'), contextMenu = document.getElementById('context-menu'), editorView = document.getElementById('editor-view'), mediaView = document.getElementById('media-view'), dashboardWelcome = document.getElementById('dashboard-welcome'), dashboardContent = document.getElementById('dashboard-content'), uptimeText = document.getElementById('uptime-text'), cpuText = document.getElementById('cpu-text'), memText = document.getElementById('mem-text'), diskText = document.getElementById('disk-text'), terminalTabsList = document.getElementById('terminal-tabs-list'), terminalPanesContainer = document.getElementById('terminal-panes-container'), processListBody = document.getElementById('process-list-body'), refreshProcessesBtn = document.getElementById('refresh-processes-btn'), processFilterInput = document.getElementById('process-filter'), sysOs = document.getElementById('sys-os'), sysKernel = document.getElementById('sys-kernel'), sysArch = document.getElementById('sys-arch'), sysCpu = document.getElementById('sys-cpu'), netIn = document.getElementById('net-in'), netOut = document.getElementById('net-out'), servicesListBody = document.getElementById('services-list-body'), loadingOverlay = document.getElementById('loading-overlay'), sidebarTabs = document.querySelectorAll('.sidebar-tab-link'), sidebarTabContents = document.querySelectorAll('.sidebar-tab-content'), snippetsList = document.getElementById('snippets-list'), addNewSnippetBtn = document.getElementById('add-new-snippet-btn');
-
-    // --- State & Constants ---
-    let currentConnections = [], currentSnippets = [], activeConnectionId = null, currentPath = '/', currentOpenFile = null, editor, cpuChart, memChart, diskChart, cleanupMetricsListener = null, cleanupTerminalDataListener = null, processCache = [];
-    let terminalSessions = new Map();
-    let activeTerminalId = null;
-    const MAX_HISTORICAL_POINTS = 12; // 12 points * 5s interval = 60s of history
-    const swalTheme = { background: '#282c34', color: '#abb2bf', confirmButtonColor: '#2c5364', cancelButtonColor: '#e06c75' };
-    const MEDIA_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'mp4', 'webm', 'ogg', 'ico'];
-    const BINARY_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'mp4', 'webm', 'ogg', 'ico', 'bmp', 'tif', 'tiff', 'mov', 'avi', 'mkv', 'mp3', 'wav', 'flac', 'aac', 'woff', 'woff2', 'ttf', 'eot', 'otf', 'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'exe', 'dll', 'so', 'a', 'lib', 'jar', 'war', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'iso', 'dmg', 'bin'];
-
-    // --- UI Helpers ---
-    const showLoader = () => loadingOverlay.classList.remove('hidden');
-    const hideLoader = () => loadingOverlay.classList.add('hidden');
-    
-    // --- Initializations ---
-    const createLineChart = (ctx, label, color) => { const gradient = ctx.createLinearGradient(0, 0, 0, ctx.canvas.clientHeight); gradient.addColorStop(0, `${color}40`); gradient.addColorStop(1, `${color}00`); return new Chart(ctx, { type: 'line', data: { labels: [], datasets: [{ label, data: [], borderColor: color, borderWidth: 2, pointRadius: 0, tension: 0.3, fill: true, backgroundColor: gradient }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100, display: false }, x: { display: false } }, plugins: { legend: { display: false } } } }); };
-    const createDoughnutChart = (ctx, data, colors) => new Chart(ctx, { type: 'doughnut', data: { labels: ['Used', 'Free'], datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } } });
-    const initCharts = () => { if (cpuChart) cpuChart.destroy(); if (memChart) memChart.destroy(); if (diskChart) diskChart.destroy(); cpuChart = createLineChart(document.getElementById('cpuChart').getContext('2d'), 'CPU Usage', '#61afef'); memChart = createLineChart(document.getElementById('memChart').getContext('2d'), 'Memory Usage', '#98c379'); diskChart = createDoughnutChart(document.getElementById('diskChart').getContext('2d'), [0, 100], ['#e06c75', '#3a3f4b']); };
-    editor = monaco.editor.create(editorContainer, { value: '// Selecione um arquivo para editar', language: 'plaintext', theme: 'vs-dark', automaticLayout: true, readOnly: true });
-    editor.onDidChangeModelContent(() => { if (currentOpenFile) saveFileBtn.disabled = false; });
-    const terminalResizeObserver = new ResizeObserver(() => { if (activeTerminalId) { const session = terminalSessions.get(activeTerminalId); if (session && session.fitAddon) { try { session.fitAddon.fit(); window.ssm.terminalResize(session.id, session.term.cols, session.term.rows); } catch (e) { console.warn('Error fitting terminal:', e.message); } } } });
-    terminalResizeObserver.observe(terminalPanesContainer);
-
-    // --- Process Manager ---
-    const parsePsOutput = (output) => { return output.trim().split('\n').slice(1).map(line => { const parts = line.trim().split(/\s+/); return { pid: parts[0], user: parts[1], cpu: parts[2], mem: parts[3], command: parts.slice(4).join(' ') }; }); };
-    const renderProcesses = (filter = '') => { if (!processListBody) return; const lowerCaseFilter = filter.toLowerCase(); const filteredProcesses = processCache.filter(p => p.command.toLowerCase().includes(lowerCaseFilter) || p.pid.includes(lowerCaseFilter)); processListBody.innerHTML = filteredProcesses.map(p => `<tr><td>${p.pid}</td><td>${p.user}</td><td>${p.cpu}</td><td>${p.mem}</td><td class="command-cell">${p.command}</td><td><button class="kill-btn" data-pid="${p.pid}" data-command="${p.command}">Encerrar</button></td></tr>`).join(''); };
-    const fetchAndRenderProcesses = async () => { if (!activeConnectionId) return; processListBody.innerHTML = '<tr><td colspan="6">Carregando processos...</td></tr>'; try { const output = await window.ssm.processList(activeConnectionId); processCache = parsePsOutput(output); renderProcesses(processFilterInput.value); } catch (error) { Swal.fire({ title: 'Erro', text: `Não foi possível carregar processos: ${error.message}`, icon: 'error', ...swalTheme }); processListBody.innerHTML = '<tr><td colspan="6">Falha ao carregar.</td></tr>'; } };
-
-    // --- Terminal Management ---
-    const switchTerminalTab = (id) => { activeTerminalId = id; terminalSessions.forEach((session, sessionId) => { session.tabEl.classList.toggle('active', sessionId === id); session.paneEl.classList.toggle('active', sessionId === id); }); if (id) { const session = terminalSessions.get(id); session.fitAddon.fit(); window.ssm.terminalResize(id, session.term.cols, session.term.rows); session.term.focus(); } };
-    const closeTerminalTab = (id) => { const session = terminalSessions.get(id); if (!session) return; window.ssm.terminalStop(id); session.term.dispose(); session.tabEl.remove(); session.paneEl.remove(); terminalSessions.delete(id); if (activeTerminalId === id) { const nextTab = terminalTabsList.querySelector('.terminal-tab'); activeTerminalId = nextTab ? nextTab.dataset.id : null; if (activeTerminalId) { switchTerminalTab(activeTerminalId); } } };
-    const createTerminalTab = () => { if (!activeConnectionId) return; const id = `term-${crypto.randomUUID()}`; const tabEl = document.createElement('li'); tabEl.className = 'terminal-tab'; tabEl.dataset.id = id; tabEl.innerHTML = `<span>Terminal ${terminalSessions.size + 1}</span><button class="close-tab-btn">&times;</button>`; const paneEl = document.createElement('div'); paneEl.className = 'terminal-pane'; const term = new Terminal({ cursorBlink: true, theme: { background: '#21252b', foreground: '#abb2bf' } }); const fitAddon = new FitAddon(); term.loadAddon(fitAddon); term.open(paneEl); term.onData(data => window.ssm.terminalWrite(id, data)); terminalTabsList.insertBefore(tabEl, document.getElementById('add-terminal-tab-btn')); terminalPanesContainer.appendChild(paneEl); const session = { id, term, fitAddon, tabEl, paneEl }; terminalSessions.set(id, session); tabEl.querySelector('.close-tab-btn').addEventListener('click', (e) => { e.stopPropagation(); closeTerminalTab(id); }); tabEl.addEventListener('click', () => switchTerminalTab(id)); window.ssm.terminalCreate(activeConnectionId, id); switchTerminalTab(id); };
-    const setupTerminalView = () => { if (!document.getElementById('add-terminal-tab-btn')) { const addTabBtn = document.createElement('li'); addTabBtn.id = 'add-terminal-tab-btn'; addTabBtn.textContent = '+'; addTabBtn.addEventListener('click', createTerminalTab); terminalTabsList.appendChild(addTabBtn); } if (terminalSessions.size === 0) { createTerminalTab(); } };
-    const destroyAllTerminals = () => { terminalSessions.forEach((session, id) => { window.ssm.terminalStop(id); session.term.dispose(); }); terminalSessions.clear(); terminalTabsList.innerHTML = ''; terminalPanesContainer.innerHTML = ''; activeTerminalId = null; };
-    if (!cleanupTerminalDataListener) { cleanupTerminalDataListener = window.ssm.onTerminalData(({ id, data }) => { const session = terminalSessions.get(id); if (session) session.term.write(data); }); }
-
-    // --- UI & View Management ---
-    sidebarTabs.forEach(tab => { tab.addEventListener('click', () => { sidebarTabs.forEach(t => t.classList.remove('active')); tab.classList.add('active'); sidebarTabContents.forEach(c => c.classList.remove('active')); document.getElementById(tab.dataset.stab).classList.add('active'); }); });
-    tabs.forEach(tab => { tab.addEventListener('click', () => { tabs.forEach(t => t.classList.remove('active')); tab.classList.add('active'); tabContents.forEach(c => c.classList.remove('active')); const activeTabContent = document.getElementById(tab.dataset.tab); activeTabContent.classList.add('active'); if (tab.dataset.tab === 'terminal' && activeConnectionId) { setupTerminalView(); } if (tab.dataset.tab === 'processes' && activeConnectionId) { fetchAndRenderProcesses(); } }); });
-    const setConnectionStatus = (connId, status) => { const connEl = connectionsList.querySelector(`li[data-id="${connId}"]`); if (connEl) { let statusDot = connEl.querySelector('.connection-status-dot'); if (!statusDot) { statusDot = document.createElement('div'); statusDot.className = 'connection-status-dot'; connEl.prepend(statusDot); } statusDot.className = `connection-status-dot status-${status}`; } };
-    const updateUIForConnection = async (connId) => { showLoader(); try { if (activeConnectionId) setConnectionStatus(activeConnectionId, 'inactive'); activeConnectionId = connId; renderConnections(); if (cleanupMetricsListener) { cleanupMetricsListener(); cleanupMetricsListener = null; } destroyAllTerminals(); window.ssm.stopMetrics(); if (activeConnectionId) { setConnectionStatus(activeConnectionId, 'loading'); window.ssm.startMetrics(activeConnectionId); cleanupMetricsListener = window.ssm.onMetricsUpdate(updateDashboard); dashboardWelcome.style.display = 'none'; dashboardContent.style.display = 'grid'; initCharts(); const activeTab = document.querySelector('.tab-link.active'); if (activeTab && activeTab.dataset.tab === 'terminal') { setupTerminalView(); } if (activeTab && activeTab.dataset.tab === 'processes') { fetchAndRenderProcesses(); } } else { dashboardWelcome.style.display = 'block'; dashboardContent.style.display = 'none'; processCache = []; renderProcesses(); } currentPath = '/'; resetPanes(); fileList.innerHTML = connId ? '' : '<li>Selecione uma conexão para ver os arquivos.</li>'; currentPathEl.textContent = '/'; if (connId) await fetchAndRenderFiles('/'); } finally { if (!activeConnectionId) hideLoader(); } };
-    const updateLineChart = (chart, value) => { const now = new Date().toLocaleTimeString(); chart.data.labels.push(now); chart.data.datasets[0].data.push(value); if (chart.data.labels.length > MAX_HISTORICAL_POINTS) { chart.data.labels.shift(); chart.data.datasets[0].data.shift(); } chart.update('none'); };
-    const updateDashboard = (metrics) => { if (!activeConnectionId) return; hideLoader(); if (metrics.status === 'error') { uptimeText.textContent = `Erro ao carregar: ${metrics.message}`; setConnectionStatus(activeConnectionId, 'error'); return; } setConnectionStatus(activeConnectionId, 'active'); const { uptime, memory, disk, cpu, system, network, services } = metrics.data; uptimeText.textContent = uptime; cpuText.textContent = `${cpu}%`; const memUsagePercent = ((memory.used / memory.total) * 100).toFixed(1); memText.textContent = `${memory.used} / ${memory.total} MB`; diskText.textContent = `${disk.used} / ${disk.total} (${disk.percent})`; updateLineChart(cpuChart, cpu); updateLineChart(memChart, memUsagePercent); const diskPercent = parseInt(disk.percent.replace('%', '')); diskChart.data.datasets[0].data = [diskPercent, 100 - diskPercent]; diskChart.update('none'); sysOs.textContent = system.os; sysKernel.textContent = system.kernel; sysArch.textContent = system.arch; sysCpu.textContent = system.cpu; netIn.textContent = `${network.in} KB/s`; netOut.textContent = `${network.out} KB/s`; if (services && services.length > 0) { servicesListBody.innerHTML = services.map(s => `<div class="service-item"><span class="status-dot status-${s.status.trim()}"></span>${s.name}</div>`).join(''); } else { servicesListBody.innerHTML = '<p>Nenhum serviço monitorado.</p>'; } };
-    const resetPanes = () => { showView(editorView); editor.setValue('// Selecione um arquivo para editar'); editor.updateOptions({ readOnly: true }); monaco.editor.setModelLanguage(editor.getModel(), 'plaintext'); openFileNameEl.textContent = 'Nenhum arquivo aberto'; saveFileBtn.disabled = true; currentOpenFile = null; };
-    const showView = (viewToShow) => { editorView.style.display = 'none'; mediaView.style.display = 'none'; viewToShow.style.display = viewToShow === editorView ? 'flex' : 'block'; };
-    const fetchAndRenderFiles = async (path) => { if (!activeConnectionId) return; showLoader(); fileList.innerHTML = ''; try { const files = await window.ssm.sftpList(activeConnectionId, path); currentPath = path; currentPathEl.textContent = path; if (path !== '/') fileList.innerHTML += `<li class="file-item parent-dir" data-path="${path.substring(0, path.lastIndexOf('/')) || '/'}">..</li>`; files.sort((a, b) => b.isDirectory - a.isDirectory || a.name.localeCompare(b.name)); files.forEach(file => { const icon = file.isDirectory ? '📁' : '📄'; const li = document.createElement('li'); li.className = 'file-item'; li.innerHTML = `${icon} ${file.name}`; li.dataset.path = `${path.endsWith('/') ? path : path + '/'}${file.name}`; li.dataset.name = file.name; li.dataset.type = file.isDirectory ? 'dir' : 'file'; fileList.appendChild(li); }); } catch (error) { Swal.fire({ title: 'Erro SFTP', text: `Não foi possível listar arquivos: ${error.message}`, icon: 'error', ...swalTheme }); currentPathEl.textContent = 'Erro ao carregar'; } finally { hideLoader(); } };
-    const renderConnections = () => { connectionsList.innerHTML = ''; currentConnections.forEach(conn => { const li = document.createElement('li'); li.dataset.id = conn.id; if (conn.id === activeConnectionId) li.classList.add('active'); const nameSpan = document.createElement('span'); nameSpan.textContent = conn.name; nameSpan.title = `${conn.user}@${conn.host}`; li.appendChild(nameSpan); const controlsDiv = document.createElement('div'); const editBtn = document.createElement('button'); editBtn.innerHTML = '&#9998;'; editBtn.className = 'edit-btn'; editBtn.title = 'Editar Conexão'; controlsDiv.appendChild(editBtn); const deleteBtn = document.createElement('button'); deleteBtn.innerHTML = '&times;'; deleteBtn.className = 'delete-btn'; deleteBtn.title = 'Excluir Conexão'; controlsDiv.appendChild(deleteBtn); li.appendChild(controlsDiv); li.addEventListener('click', (e) => (e.target.closest('button') === null) && updateUIForConnection(conn.id)); editBtn.addEventListener('click', () => handleEditClick(conn)); deleteBtn.addEventListener('click', () => handleDeleteClick(conn)); connectionsList.appendChild(li); }); };
-    const loadConnections = async () => { currentConnections = await window.ssm.listConnections(); renderConnections(); };
-    const openFile = async (filePath) => { const fileName = filePath.split('/').pop(); const extension = fileName.includes('.') ? fileName.split('.').pop().toLowerCase() : ''; if (MEDIA_EXTENSIONS.includes(extension)) await openMediaFile(filePath, extension); else if (BINARY_EXTENSIONS.includes(extension)) Swal.fire({ title: 'Arquivo Binário', text: `Arquivos do tipo ".${extension}" não podem ser abertos. Tente baixá-los.`, icon: 'info', ...swalTheme }); else await openTextFile(filePath, extension); };
-    const openTextFile = async (filePath, extension) => { showView(editorView); openFileNameEl.textContent = 'Carregando...'; try { const content = await window.ssm.sftpReadFile(activeConnectionId, filePath); currentOpenFile = filePath; editor.setValue(content); editor.updateOptions({ readOnly: false }); openFileNameEl.textContent = filePath; const language = monaco.languages.getLanguages().find(l => l.extensions?.includes(`.${extension}`))?.id || 'plaintext'; monaco.editor.setModelLanguage(editor.getModel(), language); } catch (error) { Swal.fire({ title: 'Erro ao Abrir Arquivo', text: `Não foi possível ler o arquivo. Causa provável: Permissões insuficientes.\n\nDetalhes: ${error.message}`, icon: 'error', ...swalTheme }); resetPanes(); } };
-    const openMediaFile = async (filePath, extension) => { showView(mediaView); mediaView.innerHTML = `<p>Carregando ${filePath}...</p>`; try { const base64Content = await window.ssm.sftpReadFileAsBase64(activeConnectionId, filePath); const mimeType = extension === 'svg' ? 'image/svg+xml' : `image/${extension}`; mediaView.innerHTML = `<img src="data:${mimeType};base64,${base64Content}" alt="${filePath}" />`; } catch (error) { Swal.fire({ title: 'Erro ao Carregar Mídia', text: error.message, icon: 'error', ...swalTheme }); resetPanes(); } };
-    const handleDeleteClick = (conn) => { Swal.fire({ title: 'Confirmar Exclusão', text: `Deseja excluir "${conn.name}"?`, icon: 'warning', showCancelButton: true, confirmButtonText: 'Sim, excluir!', cancelButtonText: 'Cancelar', ...swalTheme }).then(async (result) => { if (result.isConfirmed) { await window.ssm.removeConnection(conn.id); if (activeConnectionId === conn.id) updateUIForConnection(null); await loadConnections(); Swal.fire({ title: 'Excluído!', text: 'Conexão removida.', icon: 'success', ...swalTheme }); } }); };
-    const handleEditClick = (conn) => { openConnectionModal(conn); };
-    const showContextMenu = (e, items) => { contextMenu.innerHTML = ''; items.forEach(item => { const div = document.createElement('div'); div.className = 'context-menu-item'; div.textContent = item.label; div.onclick = () => { item.action(); contextMenu.style.display = 'none'; }; contextMenu.appendChild(div); }); contextMenu.style.left = `${e.clientX}px`; contextMenu.style.top = `${e.clientY}px`; contextMenu.style.display = 'block'; };
-    const openConnectionModal = (conn = null) => { let validatedConnectionData = null; const isEditing = conn !== null; Swal.fire({ title: isEditing ? 'Editar Conexão' : 'Nova Conexão', html: `<form id="swal-connection-form" class="swal-form"><div class="swal-form-group"><label for="swal-name">Nome</label><input id="swal-name" name="name" class="swal2-input" placeholder="Meu Servidor Web" required value="${conn?.name || ''}"></div><div class="swal-form-group"><label for="swal-host">Host</label><input id="swal-host" name="host" class="swal2-input" placeholder="192.168.1.100" required value="${conn?.host || ''}"></div><div class="swal-form-group"><label for="swal-user">Usuário</label><input id="swal-user" name="user" class="swal2-input" placeholder="root" required value="${conn?.user || ''}"></div><div class="swal-form-group"><label for="swal-authMethod">Autenticação</label><select id="swal-authMethod" name="authMethod" class="swal2-select"><option value="password" ${conn?.authMethod === 'password' ? 'selected' : ''}>Senha</option><option value="key" ${conn?.authMethod === 'key' ? 'selected' : ''}>Chave Privada</option></select></div><div id="swal-password-group" class="swal-form-group"><label for="swal-password">Senha</label><input type="password" id="swal-password" name="password" class="swal2-input" placeholder="${isEditing ? '(Deixe em branco para não alterar)' : ''}"></div><div id="swal-key-path-group" class="swal-form-group" style="display: none;"><label for="swal-keyPath">Caminho da Chave</label><input id="swal-keyPath" name="keyPath" class="swal2-input" placeholder="C:\\Users\\...\\.ssh\\id_rsa" value="${conn?.keyPath || ''}"></div><div class="swal-form-group"><label for="swal-services">Serviços a Monitorar (separados por vírgula)</label><input id="swal-services" name="monitoredServices" class="swal2-input" placeholder="nginx, mysql, docker" value="${(conn?.monitoredServices || []).join(', ')}"></div></form>`, showCancelButton: true, cancelButtonText: 'Cancelar', confirmButtonText: 'Testar Conexão', showLoaderOnConfirm: true, customClass: { popup: 'swal-wide', }, ...swalTheme, didOpen: () => { const form = document.getElementById('swal-connection-form'); const authSelect = document.getElementById('swal-authMethod'); const passwordGroup = document.getElementById('swal-password-group'); const keyPathGroup = document.getElementById('swal-key-path-group'); const toggleAuthFields = () => { if (authSelect.value === 'key') { passwordGroup.style.display = 'none'; keyPathGroup.style.display = 'flex'; } else { passwordGroup.style.display = 'flex'; keyPathGroup.style.display = 'none'; } }; authSelect.addEventListener('change', toggleAuthFields); toggleAuthFields(); form.addEventListener('input', () => { Swal.getConfirmButton().textContent = 'Testar Conexão'; validatedConnectionData = null; Swal.hideValidationMessage(); }); }, preConfirm: async () => { const form = document.getElementById('swal-connection-form'); const formData = new FormData(form); let connData = Object.fromEntries(formData.entries()); if (isEditing) { connData.id = conn.id; } if (!connData.name || !connData.host || !connData.user) { Swal.showValidationMessage('Nome, Host e Usuário são obrigatórios'); return false; } try { await window.ssm.testConnection(connData); connData.monitoredServices = connData.monitoredServices.split(',').map(s => s.trim()).filter(Boolean); validatedConnectionData = connData; return true; } catch (error) { Swal.showValidationMessage(`Falha na conexão: ${error.message}`); return false; } } }).then(async (result) => { if (result.isConfirmed) { if (!validatedConnectionData) return; try { const { password, ...dataToSave } = validatedConnectionData; if (isEditing) { await window.ssm.updateConnection(conn.id, dataToSave); if (dataToSave.authMethod === 'password' && password) { await window.ssm.setPassword(conn.id, password); } if (conn.id === activeConnectionId) { showLoader(); setConnectionStatus(conn.id, 'loading'); window.ssm.stopMetrics(); window.ssm.startMetrics(activeConnectionId); } } else { const newConnection = await window.ssm.addConnection(dataToSave); if (dataToSave.authMethod === 'password' && password) { await window.ssm.setPassword(newConnection.id, password); } } await loadConnections(); Swal.fire({ title: 'Salvo!', text: `Conexão ${isEditing ? 'atualizada' : 'adicionada'} com sucesso.`, icon: 'success', ...swalTheme }); } catch (error) { Swal.fire({ title: 'Erro ao Salvar', text: 'Não foi possível salvar a conexão.', icon: 'error', ...swalTheme }); } } }); };
-    
-    // Snippets Management
-    const loadSnippets = async () => { currentSnippets = await window.ssm.snippetsList(); renderSnippets(); };
-    const renderSnippets = () => { if(currentSnippets.length === 0) { snippetsList.innerHTML = `<li><small>Nenhum snippet salvo.</small></li>`; return; } snippetsList.innerHTML = currentSnippets.map(s => `<li data-id="${s.id}"><span title="${s.command}">${s.name}</span><div class="controls"><button class="exec-btn" title="Executar">&#9658;</button><button class="edit-btn" title="Editar">&#9998;</button><button class="delete-btn" title="Excluir">&times;</button></div></li>`).join(''); };
-    const openSnippetModal = (snippet = null) => { const isEditing = snippet !== null; Swal.fire({ title: isEditing ? 'Editar Snippet' : 'Novo Snippet', html: `<form id="swal-snippet-form" class="swal-form"><div class="swal-form-group"><label for="swal-snippet-name">Nome</label><input id="swal-snippet-name" name="name" class="swal2-input" placeholder="Ex: Listar containers Docker" required value="${snippet?.name || ''}"></div><div class="swal-form-group"><label for="swal-snippet-command">Comando</label><textarea id="swal-snippet-command" name="command" class="swal2-textarea" placeholder="docker ps -a" required>${snippet?.command || ''}</textarea></div></form>`, showCancelButton: true, confirmButtonText: 'Salvar', ...swalTheme, preConfirm: async () => { const form = document.getElementById('swal-snippet-form'); const name = form.querySelector('#swal-snippet-name').value; const command = form.querySelector('#swal-snippet-command').value; if (!name || !command) { Swal.showValidationMessage('Ambos os campos são obrigatórios.'); return false; } if (isEditing) { await window.ssm.snippetUpdate({ ...snippet, name, command }); } else { await window.ssm.snippetAdd({ name, command }); } } }).then(result => { if (result.isConfirmed) { loadSnippets(); Swal.fire({ title: 'Salvo!', icon: 'success', timer: 1500, showConfirmButton: false, ...swalTheme }); } }); };
-
-    // --- Event Listeners ---
-    processListBody.addEventListener('click', async (e) => { const killBtn = e.target.closest('.kill-btn'); if (killBtn && activeConnectionId) { const pid = killBtn.dataset.pid; const command = killBtn.dataset.command; const result = await Swal.fire({ title: 'Encerrar Processo?', text: `Tem certeza que deseja encerrar o processo ${pid} (${command})?`, icon: 'warning', showCancelButton: true, confirmButtonText: 'Sim, encerrar!', cancelButtonText: 'Cancelar', ...swalTheme }); if (result.isConfirmed) { try { Swal.fire({ title: 'Encerrando...', allowOutsideClick: false, didOpen: () => Swal.showLoading(), ...swalTheme }); await window.ssm.processKill(activeConnectionId, pid); Swal.close(); await fetchAndRenderProcesses(); } catch (error) { Swal.fire({ title: 'Erro', text: `Não foi possível encerrar o processo: ${error.message}`, icon: 'error', ...swalTheme }); } } } });
-    refreshProcessesBtn.addEventListener('click', fetchAndRenderProcesses);
-    processFilterInput.addEventListener('input', () => renderProcesses(processFilterInput.value));
-    fileList.addEventListener('click', (e) => { const li = e.target.closest('li.file-item'); if (!li) return; if (li.dataset.type === 'dir' || li.classList.contains('parent-dir')) fetchAndRenderFiles(li.dataset.path); else openFile(li.dataset.path); });
-    saveFileBtn.addEventListener('click', async () => { if (!currentOpenFile || saveFileBtn.disabled) return; const content = editor.getValue(); Swal.fire({ title: 'Salvando...', text: `Salvando ${currentOpenFile}`, allowOutsideClick: false, didOpen: () => Swal.showLoading(), ...swalTheme }); try { await window.ssm.sftpWriteFile(activeConnectionId, currentOpenFile, content); saveFileBtn.disabled = true; Swal.fire({ title: 'Salvo!', text: `${currentOpenFile} foi salvo com sucesso.`, icon: 'success', ...swalTheme }); } catch (error) { Swal.fire({ title: 'Erro ao Salvar', text: error.message, icon: 'error', ...swalTheme }); } });
-    fileExplorer.addEventListener('contextmenu', (e) => { e.preventDefault(); const target = e.target.closest('.file-item'); const remotePath = target?.dataset.path; const itemName = target?.dataset.name; const itemType = target?.dataset.type; let menuItems = [{ label: 'Upload de Arquivo', action: async () => { const result = await window.ssm.sftpUploadFile(activeConnectionId, currentPath); if (result.success) { fetchAndRenderFiles(currentPath); Swal.fire({ title: 'Upload Concluído', text: `${result.fileName} enviado com sucesso para ${currentPath}`, icon: 'success', timer: 2000, showConfirmButton: false, ...swalTheme }); } else if (result.reason !== 'canceled') { Swal.fire({ title: 'Erro no Upload', text: result.error, icon: 'error', ...swalTheme }); } } }, { label: 'Criar Nova Pasta', action: async () => { const { value: folderName } = await Swal.fire({ title: 'Nome da Nova Pasta', input: 'text', inputPlaceholder: 'nome_da_pasta', showCancelButton: true, ...swalTheme }); if (folderName && folderName.trim()) { await window.ssm.sftpCreateDir(activeConnectionId, `${currentPath.endsWith('/') ? currentPath : currentPath + '/'}${folderName.trim()}`); fetchAndRenderFiles(currentPath); } } }]; if (target) { menuItems.unshift({ label: 'Renomear', action: async () => { const { value: newName } = await Swal.fire({ title: 'Renomear', input: 'text', inputValue: itemName, showCancelButton: true, ...swalTheme }); if (newName && newName.trim() && newName !== itemName) { const newPath = `${currentPath.endsWith('/') ? currentPath : currentPath + '/'}${newName.trim()}`; await window.ssm.sftpRename(activeConnectionId, remotePath, newPath); fetchAndRenderFiles(currentPath); } } }); if (itemType === 'file') { menuItems.unshift({ label: 'Baixar Arquivo', action: async () => { const result = await window.ssm.sftpDownloadFile(activeConnectionId, remotePath); if (result.success) Swal.fire({ title: 'Download Concluído', text: `Arquivo salvo em: ${result.path}`, icon: 'success', ...swalTheme }); } }); menuItems.unshift({ label: 'Excluir Arquivo', action: async () => { Swal.fire({ title: 'Confirmar', text: `Excluir "${itemName}"?`, icon: 'warning', showCancelButton: true, ...swalTheme }).then(async (r) => { if (r.isConfirmed) { await window.ssm.sftpDeleteFile(activeConnectionId, remotePath); fetchAndRenderFiles(currentPath); } }); } }); } else if (itemType === 'dir') { menuItems.unshift({ label: 'Excluir Pasta', action: async () => { Swal.fire({ title: 'Confirmar', text: `Excluir pasta "${itemName}"? A pasta deve estar vazia.`, icon: 'warning', showCancelButton: true, ...swalTheme }).then(async (r) => { if (r.isConfirmed) { try { await window.ssm.sftpDeleteDir(activeConnectionId, remotePath); fetchAndRenderFiles(currentPath); } catch (err) { Swal.fire({ title: 'Erro', text: 'Não foi possível excluir. A pasta pode não estar vazia.', icon: 'error', ...swalTheme }); } } }); } }); } } showContextMenu(e, menuItems); });
-    addNewSnippetBtn.addEventListener('click', () => openSnippetModal());
-    snippetsList.addEventListener('click', (e) => { const target = e.target; const li = target.closest('li'); if (!li) return; const snippetId = li.dataset.id; const snippet = currentSnippets.find(s => s.id === snippetId); if (target.classList.contains('exec-btn')) { if (!activeTerminalId) { Swal.fire({ title: 'Nenhum Terminal Ativo', text: 'Por favor, abra ou selecione uma aba de terminal para executar o snippet.', icon: 'info', ...swalTheme }); return; } window.ssm.terminalWrite(activeTerminalId, snippet.command + '\n'); } else if (target.classList.contains('edit-btn')) { openSnippetModal(snippet); } else if (target.classList.contains('delete-btn')) { Swal.fire({ title: 'Confirmar Exclusão', text: `Deseja excluir o snippet "${snippet.name}"?`, icon: 'warning', showCancelButton: true, ...swalTheme }).then(async (r) => { if (r.isConfirmed) { await window.ssm.snippetRemove(snippet.id); loadSnippets(); } }); } });
-    window.addEventListener('click', () => contextMenu.style.display = 'none');
-    window.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); if (!saveFileBtn.disabled) saveFileBtn.click(); } });
-    addNewConnectionBtn.addEventListener('click', () => openConnectionModal());
-
-    // --- Initial Load ---
-    loadConnections();
-    loadSnippets();
-    updateUIForConnection(null);
+    new AppController();
 });
