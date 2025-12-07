@@ -38,7 +38,52 @@ class AppController {
         });
 
         this.initTabs();
+        this.initSettingsLogic();
         this.init();
+    }
+
+    initSettingsLogic() {
+        const modal = document.getElementById('settings-modal');
+        const openBtn = document.getElementById('main-settings-btn');
+        const closeBtn = document.getElementById('close-settings-btn');
+        const siteLink = document.getElementById('main-site-link');
+        const donateBtn = document.getElementById('main-donate-btn');
+
+        if (openBtn && modal) {
+            openBtn.addEventListener('click', () => {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            });
+        }
+
+        const closeModal = () => {
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+        };
+
+        if (closeBtn) closeBtn.addEventListener('click', closeModal);
+
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) closeModal();
+            });
+        }
+
+        if (siteLink) {
+            siteLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                window.ssm.openExternal('https://ssm.crom.run');
+            });
+        }
+
+        if (donateBtn) {
+            donateBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                window.ssm.openExternal('https://ssm.crom.run/donate');
+            });
+        }
     }
 
     initTabs() {

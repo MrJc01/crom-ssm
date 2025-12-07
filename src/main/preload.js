@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('ssm', {
   // Navigation
   enterApp: () => ipcRenderer.send('navigate:to:main'),
+  openExternal: (url) => require('electron').shell.openExternal(url),
 
   // ConnectionService methods
   listConnections: () => ipcRenderer.invoke('ssm:connections:list'),

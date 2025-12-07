@@ -10,8 +10,9 @@ let mainWindow;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1600,
-    height: 900,
+    width: 800,
+    height: 600,
+    center: true,
     show: false,
     frame: false, // Frameless window
     titleBarStyle: 'hidden', // Hide native titlebar
@@ -40,9 +41,6 @@ ipcMain.on('navigate:to:main', () => {
         mainWindow.loadFile(path.join(__dirname, '..', '..', 'dist', 'index.html'));
     }
 });
-
-
-
 
 app.whenReady().then(() => {
   logger.info('App pronto. Registrando handlers IPC e criando janela.');

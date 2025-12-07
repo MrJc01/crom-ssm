@@ -1,69 +1,221 @@
 <!DOCTYPE html>
 <html>
-<head>
-    <meta charset="UTF-8">
+  <head>
+    <meta charset="UTF-8" />
     <title>Bem-vindo ao Crom-SSM</title>
     <style>
-        :root {
-            --bg-primary: #282c34;
-            --text-primary: #abb2bf;
-            --grad-green: #2c5364;
-            --grad-yellow: #f0cb35;
-            --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-        }
-        body {
-            font-family: var(--font-family);
-            background-color: var(--bg-primary);
-            color: var(--text-primary);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            text-align: center;
-        }
-        .container {
-            max-width: 600px;
-        }
-        h1 {
-            font-size: 48px;
-            font-weight: 300;
-            background: -webkit-linear-gradient(45deg, var(--grad-green), var(--grad-yellow));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        p {
-            font-size: 18px;
-            line-height: 1.6;
-            margin: 20px 0 40px;
-        }
-        .enter-button {
-            border: none;
-            padding: 15px 30px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 18px;
-            font-weight: 500;
-            color: #fff;
-            background: linear-gradient(to right, var(--grad-green), var(--grad-yellow));
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        }
-        .enter-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
-        }
+      :root {
+        --bg-primary: #282c34;
+        --text-primary: #abb2bf;
+        --grad-green: #2c5364;
+        --grad-yellow: #f0cb35;
+        --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+        --modal-bg: #333842;
+      }
+      body {
+        font-family: var(--font-family);
+        background-color: var(--bg-primary);
+        color: var(--text-primary);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+        text-align: center;
+        overflow: hidden; /* Prevent scroll */
+        opacity: 0;
+        transition: opacity 0.3s ease-in;
+      }
+      body.loaded {
+        opacity: 1;
+      }
+      .container {
+        max-width: 600px;
+        position: relative;
+        padding: 20px;
+      }
+      h1 {
+        font-size: 48px;
+        font-weight: 300;
+        background: -webkit-linear-gradient(
+          45deg,
+          var(--grad-green),
+          var(--grad-yellow)
+        );
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 10px;
+      }
+      p {
+        font-size: 18px;
+        line-height: 1.6;
+        margin: 20px 0 40px;
+      }
+      .btn-group {
+        display: flex;
+        gap: 15px;
+        justify-content: center;
+      }
+      .enter-button {
+        border: none;
+        padding: 15px 30px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 18px;
+        font-weight: 500;
+        color: #fff;
+        background: linear-gradient(
+          to right,
+          var(--grad-green),
+          var(--grad-yellow)
+        );
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+      }
+      .enter-button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+      }
+      .donate-button {
+        border: 2px solid var(--grad-yellow);
+        padding: 15px 30px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 18px;
+        font-weight: 500;
+        color: var(--grad-yellow);
+        background: transparent;
+        transition: all 0.3s ease;
+      }
+      .donate-button:hover {
+        background: rgba(240, 203, 53, 0.1);
+        transform: translateY(-2px);
+      }
+
+      /* Settings Button (Top Right) */
+      .settings-icon-btn {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: none;
+        border: none;
+        color: var(--text-primary);
+        cursor: pointer;
+        opacity: 0.7;
+        transition: opacity 0.2s;
+      }
+      .settings-icon-btn:hover {
+        opacity: 1;
+      }
+      .settings-icon-btn svg {
+        width: 24px;
+        height: 24px;
+      }
+
+      /* Modal */
+      .modal {
+        display: none; /* Hidden by default */
+        position: fixed;
+        z-index: 100;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(5px);
+        align-items: center;
+        justify-content: center;
+      }
+      .modal-content {
+        background-color: var(--modal-bg);
+        padding: 30px;
+        border-radius: 12px;
+        width: 80%;
+        max-width: 400px;
+        text-align: center;
+        position: relative;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      .close-btn {
+        position: absolute;
+        top: 10px;
+        right: 15px;
+        font-size: 28px;
+        font-weight: bold;
+        color: #aaa;
+        cursor: pointer;
+        background: none;
+        border: none;
+      }
+      .close-btn:hover {
+        color: #fff;
+      }
+      .modal-link {
+        color: var(--grad-yellow);
+        text-decoration: none;
+        font-weight: bold;
+      }
+      .modal-link:hover {
+        text-decoration: underline;
+      }
+      .creator-info {
+        margin-top: 20px;
+        font-size: 14px;
+        color: #888;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
+    <!-- Settings Button -->
+    <button id="settings-btn" class="settings-icon-btn" title="Configurações">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        class="lucide lucide-settings"
+      >
+        <path
+          d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1 1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
+        />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+    </button>
+
     <div class="container">
-        <h1>Crom-SSM</h1>
-        <p>
-            Seu Gerenciador de Servidores Simples e Poderoso.
-            Conecte-se, gerencie arquivos, monitore recursos e execute comandos
-            em um ambiente seguro e integrado.
-        </p>
-        <button id="enter-app-btn" class="enter-button">Entrar no Gerenciador</button>
+      <h1>Crom-SSM</h1>
+      <p>
+        Seu Gerenciador de Servidores Simples e Poderoso.<br />
+        Conecte-se, gerencie arquivos e monitore recursos.
+      </p>
+
+      <div class="btn-group">
+        <button id="enter-app-btn" class="enter-button">Entrar</button>
+        <button id="donate-btn" class="donate-button">Donate ❤️</button>
+      </div>
     </div>
-</body>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal">
+      <div class="modal-content">
+        <button class="close-btn" id="close-modal">&times;</button>
+        <h2>Sobre o Sistema</h2>
+        <p>
+          Este é o Crom-SSM, desenvolvido para simplificar a gestão web de
+          servidores.
+          <br /><br />
+          Visite nosso site oficial:<br />
+          <a href="#" id="site-link" class="modal-link">https://ssm.crom.run</a>
+        </p>
+        <div class="creator-info">Criado por <strong>MrJc</strong></div>
+      </div>
+    </div>
+  </body>
 </html>
