@@ -128,7 +128,8 @@ function isActive($path, $current)
             <section class="max-w-4xl mx-auto py-16 px-4">
                 <h2 class="text-3xl font-bold mb-10 text-center">Sobre</h2>
                 <p class="text-xl text-gray-400 max-w-3xl mx-auto mb-6">
-                    O Crom-SSM nasceu da necessidade de reunir, em um único ambiente moderno e eficiente, as principais
+                    O SSM(Secure Shell Monitor) nasceu da necessidade de reunir, em um único ambiente moderno e eficiente,
+                    as principais
                     ferramentas
                     utilizadas no dia a dia de DevOps, administradores de sistemas e profissionais que lidam com múltiplos
                     servidores Linux.
@@ -276,7 +277,7 @@ function isActive($path, $current)
 
     <!-- FOOTER -->
     <footer class="border-t border-gray-800 bg-slate-900 py-8 text-center text-gray-500 text-sm">
-        <p>&copy; <?php echo date('Y'); ?> <?php echo $siteName; ?>. Todos os direitos reservados.</p>
+        <p>&copy; <?php echo date('Y'); ?> <a href="https://crom.run">crom.run</a>. Todos os direitos reservados.</p>
     </footer>
 
 </body>
