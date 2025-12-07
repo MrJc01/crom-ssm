@@ -7,6 +7,10 @@
     "start": "npm run build:renderer && electron .",
     "build:renderer": "webpack --config webpack.config.js",
     "dist": "npm run build:renderer && electron-builder",
+    "dist:win": "npm run build:renderer && electron-builder --win",
+    "dist:linux": "npm run build:renderer && electron-builder --linux",
+    "dist:mac": "npm run build:renderer && electron-builder --mac",
+    "dist:all": "npm run build:renderer && electron-builder --win --linux --mac",
     "rebuild": "electron-rebuild"
   },
   "keywords": [
