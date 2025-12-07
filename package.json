@@ -6,12 +6,16 @@
   "scripts": {
     "start": "npm run build:renderer && electron .",
     "build:renderer": "webpack --config webpack.config.js",
+    "postinstall": "electron-builder install-app-deps",
     "dist": "npm run build:renderer && electron-builder",
     "dist:win": "npm run build:renderer && electron-builder --win",
     "dist:linux": "npm run build:renderer && electron-builder --linux",
     "dist:mac": "npm run build:renderer && electron-builder --mac",
     "dist:all": "npm run build:renderer && electron-builder --win --linux --mac",
     "rebuild": "electron-rebuild"
+  },
+  "overrides": {
+    "cpu-features": "npm:empty-npm-package@1.0.0"
   },
   "keywords": [
     "electron",

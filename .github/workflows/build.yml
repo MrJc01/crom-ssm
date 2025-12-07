@@ -20,7 +20,12 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
+        env:
+          npm_config_optional: false
+
+      - name: Rebuild native modules for Electron
+        run: npx electron-rebuild
 
       - name: Build for Windows
         run: npm run dist:win
@@ -48,8 +53,18 @@ jobs:
           node-version: "20"
           cache: "npm"
 
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsecret-1-dev libgnome-keyring-dev
+
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
+        env:
+          npm_config_optional: false
+
+      - name: Rebuild native modules for Electron
+        run: npx electron-rebuild
 
       - name: Build for Linux
         run: npm run dist:linux
@@ -78,7 +93,12 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
+        env:
+          npm_config_optional: false
+
+      - name: Rebuild native modules for Electron
+        run: npx electron-rebuild
 
       - name: Build for macOS
         run: npm run dist:mac
