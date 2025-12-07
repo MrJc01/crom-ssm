@@ -5,6 +5,7 @@ import { Dashboard } from './components/Dashboard';
 import { TerminalManager } from './components/TerminalManager';
 import { FileManager } from './components/FileManager';
 import { ProcessManager } from './components/ProcessManager';
+import { TitleBar } from './components/TitleBar';
 
 const swalTheme = { background: '#1e293b', color: '#cbd5e1', confirmButtonColor: '#2563eb', cancelButtonColor: '#ef4444' };
 
@@ -14,6 +15,7 @@ class AppController {
         this.cleanupMetrics = null;
 
         // Components
+        this.titleBar = new TitleBar();
         this.dashboard = new Dashboard();
         this.terminalManager = new TerminalManager(null);
         this.fileManager = new FileManager();

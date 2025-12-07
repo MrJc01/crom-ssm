@@ -57,4 +57,12 @@ contextBridge.exposeInMainWorld('ssm', {
   snippetAdd: (snippet) => ipcRenderer.invoke('ssm:snippets:add', snippet),
   snippetUpdate: (snippet) => ipcRenderer.invoke('ssm:snippets:update', snippet),
   snippetRemove: (id) => ipcRenderer.invoke('ssm:snippets:remove', id),
+
+  // Window Controls
+  win: {
+    minimize: () => ipcRenderer.invoke('win/minimize'),
+    maximize: () => ipcRenderer.invoke('win/maximize'),
+    close: () => ipcRenderer.invoke('win/close'),
+    toggleMaximize: () => ipcRenderer.invoke('win/toggleMaximize')
+  }
 });

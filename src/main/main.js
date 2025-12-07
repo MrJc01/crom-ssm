@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { registerIpcHandlers } = require('./ipc/handlers');
+const { registerWindowHandlers } = require('./ipc/windowHandlers');
 const logger = require('./utils/logger');
 
 logger.info('Iniciando aplicação Crom-SSM...');
@@ -11,7 +12,9 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1600,
     height: 900,
-    show: false, // Don't show the window until the welcome screen is ready
+    show: false,
+    frame: false, // Frameless window
+    titleBarStyle: 'hidden', // Hide native titlebar
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -39,9 +42,12 @@ ipcMain.on('navigate:to:main', () => {
 });
 
 
+
+
 app.whenReady().then(() => {
   logger.info('App pronto. Registrando handlers IPC e criando janela.');
   registerIpcHandlers();
+  registerWindowHandlers();
   createWindow();
 
   app.on('activate', function () {
