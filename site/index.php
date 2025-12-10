@@ -64,6 +64,10 @@ function isActive($path, $current)
                 <a href="/about" class="<?php echo isActive('/about', $route); ?> transition">Sobre</a>
                 <a href="/features" class="<?php echo isActive('/features', $route); ?> transition">Funcionalidades</a>
                 <a href="/download" class="<?php echo isActive('/download', $route); ?> transition">Download</a>
+                <a href="https://github.com/MrJc01/crom-ssm" target="_blank" rel="noopener"
+                    class="text-gray-300 hover:text-white transition">
+                    <i class="fa-brands fa-github mr-1"></i> Código Fonte
+                </a>
                 <a href="/donation"
                     class="<?php echo isActive('/donation', $route); ?> px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-full transition shadow-lg shadow-blue-500/30">
                     <i class="fa-solid fa-heart mr-1"></i> Doar
@@ -278,6 +282,7 @@ function isActive($path, $current)
     <!-- FOOTER -->
     <footer class="border-t border-gray-800 bg-slate-900 py-8 text-center text-gray-500 text-sm">
         <p>&copy; <?php echo date('Y'); ?> <a href="https://crom.run">crom.run</a>. Todos os direitos reservados.</p>
+        <p class="mt-2">Código fonte: <a class="text-blue-400 hover:text-blue-200" href="https://github.com/MrJc01/crom-ssm" target="_blank" rel="noopener">github.com/MrJc01/crom-ssm</a></p>
     </footer>
 
 </body>
